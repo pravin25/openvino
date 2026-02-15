@@ -160,8 +160,9 @@ void CreateCustomOp(ProgramBuilder& p, const std::shared_ptr<ov::Node>& op, Cust
         case CustomLayer::ParamType::Output: {
             kernelParameters.resize(kernelParameters.size() > size_t(param.paramIndex + 1) ? kernelParameters.size() : size_t(param.paramIndex + 1));
             kernelParameters[param.paramIndex].type = cldnn::custom_gpu_primitive::arg_output;
-            kernelParameters[param.paramIndex].index =
-                static_cast<cldnn::custom_gpu_primitive::arg_index>((param.portIndex >= static_cast<int>(inputs.size())) ? -1 : param.portIndex);
+            //kernelParameters[param.paramIndex].index =
+                //static_cast<cldnn::custom_gpu_primitive::arg_index>((param.portIndex >= static_cast<int>(inputs.size())) ? -1 : param.portIndex);
+            kernelParameters[param.paramIndex].index = static_cast<cldnn::custom_gpu_primitive::arg_index>(param.portIndex);
             outputFormats.push_back(param.format);
             break;
         }
