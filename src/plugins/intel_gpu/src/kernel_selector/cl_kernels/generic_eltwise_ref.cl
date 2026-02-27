@@ -194,4 +194,5 @@ KERNEL(eltwise)(
 #else
     output[output_offset] = TO_OUTPUT_TYPE(ACTIVATION_TYPED(out, ACTIVATION_PARAMS_TYPED));
 #endif
+//printf("\n Eltiwise\n");
 }

@@ -1,0 +1,1253 @@
+diff --git a/src/inference/dev_api/openvino/runtime/plugin_config.hpp b/src/inference/dev_api/openvino/runtime/plugin_config.hpp
+index 80e1daa78c..82cb59e4af 100644
+--- a/src/inference/dev_api/openvino/runtime/plugin_config.hpp
++++ b/src/inference/dev_api/openvino/runtime/plugin_config.hpp
+@@ -210,6 +210,10 @@ protected:
+     }
+ 
+     ConfigOptionBase* get_option_ptr(const std::string& name) const {
++        /*for (const auto& pair : m_options_map) {
++              std::cout << "Key: " << pair.first
++              << ", Pointer: " << pair.second << std::endl;
++        }*/
+         auto it = m_options_map.find(name);
+         OPENVINO_ASSERT(it != m_options_map.end(), "Option not found: ", name);
+         OPENVINO_ASSERT(it->second != nullptr, "Option is invalid: ", name);
+diff --git a/src/plugins/intel_cpu/src/nodes/eltwise.cpp b/src/plugins/intel_cpu/src/nodes/eltwise.cpp
+index 1bde4ba46e..a8cf1b559e 100644
+--- a/src/plugins/intel_cpu/src/nodes/eltwise.cpp
++++ b/src/plugins/intel_cpu/src/nodes/eltwise.cpp
+@@ -462,6 +462,13 @@ Eltwise::Eltwise(const std::shared_ptr<ov::Node>& op, const GraphContext::CPtr&
+     if (!isSupportedOperation(op, errorMessage)) {
+         OPENVINO_THROW_NOT_IMPLEMENTED(errorMessage);
+     }
++    std::string name = op->get_friendly_name();
++    if (name == "/coarse_point_matching/Sub_3") {
++        std::cout << ">>> Found target ADD node" << std::endl;
++        std::cout << "layer_name:"<< name << "\n";
++        std::cout << "[Eltwise] node: " << getName() << std::endl;
++        m_attrs.data.debug_name = getName();
++    }
+     getInitializers().at(op->get_type_info())(op, *this);
+     m_attrs.data.algo = getAlgorithm();
+ }
+@@ -847,10 +854,29 @@ void Eltwise::prepareParams() {
+ 
+ void Eltwise::execute([[maybe_unused]] const dnnl::stream& strm) {
+     OPENVINO_DEBUG_ASSERT(m_executor, "Eltwise executor not created");
+-    m_executor->execute(m_memory);
++    /*
++    std::string name = getName();
++    std::cout << "[Execute1] node: " << getName() << std::endl;
++    if (name == "/coarse_point_matching/Sub_3") {
++        std::cout << ">>> Execute1:Found target ADD node" << std::endl;
++        std::cout << "layer_name:"<< name << "\n";
++        std::cout << "[Eltwise] node: " << getName() << std::endl;
++        m_attrs.data.debug_name = getName();
++   }*/
++   m_executor->execute(m_memory);
++
+ }
+ 
+ void Eltwise::executeDynamicImpl(const dnnl::stream& strm) {
++    /*
++    std::string name = getName();
++    std::cout << "[Execute2] node: " << getName() << std::endl;
++    if (name == "/coarse_point_matching/Sub_3") {
++        std::cout << ">>> Execute2:Found target ADD node" << std::endl;
++        std::cout << "layer_name:"<< name << "\n";
++        std::cout << "[Eltwise] node: " << getName() << std::endl;
++        m_attrs.data.debug_name = getName();
++   }*/
+     execute(strm);
+ }
+ 
+diff --git a/src/plugins/intel_cpu/src/nodes/executors/eltwise_config.hpp b/src/plugins/intel_cpu/src/nodes/executors/eltwise_config.hpp
+index 2511aeb180..515bc39469 100644
+--- a/src/plugins/intel_cpu/src/nodes/executors/eltwise_config.hpp
++++ b/src/plugins/intel_cpu/src/nodes/executors/eltwise_config.hpp
+@@ -35,6 +35,8 @@ struct EltwiseData {
+         return algo == rhs.algo && onednnAlgorithm == rhs.onednnAlgorithm && alpha == rhs.alpha && beta == rhs.beta &&
+                gamma == rhs.gamma;
+     }
++    // ---- ADD THIS ----
++    std::string debug_name;
+ };
+ 
+ inline std::ostream& operator<<(std::ostream& os, const EltwiseData& eltwiseData) {
+diff --git a/src/plugins/intel_cpu/src/nodes/executors/eltwise_stateful_executor.cpp b/src/plugins/intel_cpu/src/nodes/executors/eltwise_stateful_executor.cpp
+index efbc80c91c..50f35d9357 100644
+--- a/src/plugins/intel_cpu/src/nodes/executors/eltwise_stateful_executor.cpp
++++ b/src/plugins/intel_cpu/src/nodes/executors/eltwise_stateful_executor.cpp
+@@ -318,6 +318,24 @@ void EltwiseStatefulExecutor::execute(const MemoryArgs& memory) {
+     }
+ 
+     m_executor->exec(args_ptrs, outDims);
++
++    if (m_attrs.data.debug_name == "/coarse_point_matching/Sub_3") {
++    std::cout << "\n==== Debug: " << m_attrs.data.debug_name << " ====\n";
++    // print inputs
++    for (const auto& [argId, mem] : memory) {
++        if (argId == ARG_DST) continue;
++        auto ptr = mem->getDataAs<const float>();
++        std::cout << "Input " << argId << ": ";
++        for (int i = 0; i < 10; i++) std::cout << ptr[i] << " ";
++        std::cout << "\n";
++    }
++    // print output
++    float* out_ptr = reinterpret_cast<float*>(args_ptrs.dst_ptr);
++    std::cout << "Output: ";
++    for (int i = 0; i < 10; i++) std::cout << out_ptr[i] << " ";
++    std::cout << "\n";
++    }
++
+ }
+ 
+ impl_desc_type EltwiseStatefulExecutor::implType() const {
+diff --git a/src/plugins/intel_gpu/include/intel_gpu/plugin/custom_layer.hpp b/src/plugins/intel_gpu/include/intel_gpu/plugin/custom_layer.hpp
+index e5b83bca10..7ee8f494d2 100644
+--- a/src/plugins/intel_gpu/include/intel_gpu/plugin/custom_layer.hpp
++++ b/src/plugins/intel_gpu/include/intel_gpu/plugin/custom_layer.hpp
+@@ -25,6 +25,7 @@ public:
+         Input,
+         Output,
+         Data,
++        Internal,
+     } ParamType;
+     struct KerenlParam {
+         KerenlParam() :type(Input), paramIndex(-1), portIndex(-1),
+@@ -33,6 +34,7 @@ public:
+         int paramIndex;
+         int portIndex;
+         std::string blobName;
++        std::string size_expr;
+         cldnn::format format;
+     };
+ 
+diff --git a/src/plugins/intel_gpu/include/intel_gpu/primitives/custom_gpu_primitive.hpp b/src/plugins/intel_gpu/include/intel_gpu/primitives/custom_gpu_primitive.hpp
+index 97650edf0a..6d7180ff31 100644
+--- a/src/plugins/intel_gpu/include/intel_gpu/primitives/custom_gpu_primitive.hpp
++++ b/src/plugins/intel_gpu/include/intel_gpu/primitives/custom_gpu_primitive.hpp
+@@ -23,6 +23,7 @@ struct custom_gpu_primitive : public primitive_base<custom_gpu_primitive> {
+     enum arg_type {
+         arg_input,
+         arg_output,
++        arg_internal,
+     };
+     //
+     /// @brief Custom primitive kernel argument index
+@@ -32,6 +33,7 @@ struct custom_gpu_primitive : public primitive_base<custom_gpu_primitive> {
+     struct arg_desc {
+         arg_type type;
+         arg_index index;
++        std::string size_expr;
+ 
+         bool operator==(const arg_desc& rhs) const {
+             return (type == rhs.type && index == rhs.index);
+@@ -40,11 +42,13 @@ struct custom_gpu_primitive : public primitive_base<custom_gpu_primitive> {
+         void save(BinaryOutputBuffer& ob) const {
+             ob << make_data(&type, sizeof(arg_type));
+             ob << index;
++            ob << size_expr;
+         }
+ 
+         void load(BinaryInputBuffer& ib) {
+             ib >> make_data(&type, sizeof(arg_type));
+             ib >> index;
++            ib >> size_expr;
+         }
+     };
+ 
+diff --git a/src/plugins/intel_gpu/src/graph/debug_helper.cpp b/src/plugins/intel_gpu/src/graph/debug_helper.cpp
+index a32a44b3fa..2584546515 100644
+--- a/src/plugins/intel_gpu/src/graph/debug_helper.cpp
++++ b/src/plugins/intel_gpu/src/graph/debug_helper.cpp
+@@ -181,10 +181,12 @@ void log_memory_to_file(memory::ptr mem, layout data_layout, stream& stream, std
+     auto actual_mem = mem->get_engine()->reinterpret_buffer(*mem, data_layout);
+ 
+     auto mem_dt = actual_mem->get_layout().data_type;
+-    if (mem_dt == cldnn::data_types::f32)
++    if (mem_dt == cldnn::data_types::f32) {
++        std::cout << "\n is F32....";
+         dump<float>(actual_mem, stream, file_stream, dump_raw);
+-    else if (mem_dt == cldnn::data_types::f16)
+-        dump<ov::float16>(actual_mem, stream, file_stream, dump_raw);
++    } else if (mem_dt == cldnn::data_types::f16) {
++        std::cout << "\n is F16....";
++        dump<ov::float16>(actual_mem, stream, file_stream, dump_raw);}
+     else if (mem_dt == cldnn::data_types::i64)
+         dump<int64_t>(actual_mem, stream, file_stream, dump_raw);
+     else if (mem_dt == cldnn::data_types::i32)
+diff --git a/src/plugins/intel_gpu/src/graph/graph_optimizer/prepare_primitive_fusing.cpp b/src/plugins/intel_gpu/src/graph/graph_optimizer/prepare_primitive_fusing.cpp
+index dce6d6aebe..fba715f668 100644
+--- a/src/plugins/intel_gpu/src/graph/graph_optimizer/prepare_primitive_fusing.cpp
++++ b/src/plugins/intel_gpu/src/graph/graph_optimizer/prepare_primitive_fusing.cpp
+@@ -64,7 +64,7 @@ void prepare_primitive_fusing::run(program& p) {
+     remove_redundant_reshape(p);
+     fuse_swiglu(p);
+     fuse_bias(p);
+-    fuse_simple_primitives(p);
++    //fuse_simple_primitives(p);
+     fuse_constant_transposes(p);
+     optimize_fused_ops(p);
+ }
+diff --git a/src/plugins/intel_gpu/src/graph/impls/ocl/custom_primitive.cpp b/src/plugins/intel_gpu/src/graph/impls/ocl/custom_primitive.cpp
+index 0f583a849f..92db26abc1 100644
+--- a/src/plugins/intel_gpu/src/graph/impls/ocl/custom_primitive.cpp
++++ b/src/plugins/intel_gpu/src/graph/impls/ocl/custom_primitive.cpp
+@@ -12,7 +12,6 @@
+ #include <vector>
+ #include <memory>
+ #include <string>
+-
+ namespace kernel_selector {
+ using jit_constants = kernel_selector::JitConstants;
+ }
+@@ -20,6 +19,12 @@ using jit_constants = kernel_selector::JitConstants;
+ namespace cldnn {
+ namespace ocl {
+ 
++//forward declaration
++static size_t evaluate_size_expr(const std::string& size_expr, const std::vector<int64_t>& input_dims);
++static void allocate_internal_buffers(custom_gpu_primitive_inst& instance,
++                                      std::vector<cldnn::memory::ptr>& internal_buffers,
++                                      const std::unordered_map<uint32_t, std::string>& size_expr_map);
++
+ struct custom_gpu_primitive_impl : typed_primitive_impl<custom_gpu_primitive> {
+     using parent = typed_primitive_impl<custom_gpu_primitive>;
+     using parent::parent;
+@@ -28,6 +33,8 @@ struct custom_gpu_primitive_impl : typed_primitive_impl<custom_gpu_primitive> {
+ 
+     std::shared_ptr<kernel_selector::cl_kernel_data> cl_kernel;
+     std::vector<kernel::ptr> _kernels;
++    std::unordered_map<uint32_t, std::string> size_expr_map;
++    std::vector<memory::ptr> internal_buffers; // store allocated buffers here
+ 
+     std::unique_ptr<primitive_impl> clone() const override {
+         return std::make_unique<custom_gpu_primitive_impl>(*this);
+@@ -49,6 +56,13 @@ struct custom_gpu_primitive_impl : typed_primitive_impl<custom_gpu_primitive> {
+         : cl_kernel(cl_kernel)
+         , _kernels() { }
+ 
++    custom_gpu_primitive_impl(const custom_gpu_primitive_node& arg,
++                             std::shared_ptr<kernel_selector::cl_kernel_data>& cl_kernel,
++                             const std::unordered_map<uint32_t, std::string>& size_expr_map)
++        : cl_kernel(cl_kernel)
++        , _kernels()
++        , size_expr_map(size_expr_map) { }
++
+     std::vector<std::shared_ptr<cldnn::kernel_string>> get_kernels_source() override {
+         std::vector<std::shared_ptr<cldnn::kernel_string>> kernel_strings;
+         kernel_strings.push_back(cl_kernel->code.kernelString);
+@@ -88,20 +102,142 @@ struct custom_gpu_primitive_impl : typed_primitive_impl<custom_gpu_primitive> {
+         for (auto& dep : instance.dependencies()) {
+             args.inputs.push_back(dep.first->output_memory_ptr());
+         }
++
+         args.outputs = { instance.output_memory_ptr() };
++
++        if (internal_buffers.empty() && !size_expr_map.empty()) {
++            allocate_internal_buffers(instance, internal_buffers, size_expr_map);
++        }
++        for (auto& buf : internal_buffers) {
++            args.intermediates.push_back(buf);
++        }
++        //const auto& input_layout = instance.dependencies().at(0).first->get_output_layout();
++        //auto input_dims = input_layout.get_tensor().sizes(format::bfyx);
++        //std::cout << "\n [DEBUG_2] input_dims[1]:" << input_dims[1];
++
++
++
++        /*
++        //args.intermediates.push_back(internal_buf); // need to increment based in number of input inside intermediate buffer
++                                                    // args.intermediates.push_back(internal_buf);
++        // DEBUG: Print intermediate count
++        std::cout << "[DEBUG_2] Intermediates count: " << args.intermediates.size() << std::endl;
++
++        std::cout << "[DEBUG_2] Outputs count: " << args.outputs.size() << std::endl;
++
++        // --- Kernel param print ---
++        std::cout << "[DEBUG_2] Kernel argument layout:" << std::endl;
++        std::cout << "[DEBUG_2] cl_kernel->params.arguments.size():" << cl_kernel->params.arguments.size() << std::endl;
++        for (size_t i = 0; i < cl_kernel->params.arguments.size(); ++i) {
++            const auto& arg = cl_kernel->params.arguments[i];
++            std::string type_str;
++            switch (arg.t) {
++                case kernel_selector::kernel_argument_types::INPUT: type_str = "INPUT"; break;
++                case kernel_selector::kernel_argument_types::OUTPUT: type_str = "OUTPUT"; break;
++                case kernel_selector::kernel_argument_types::WEIGHTS: type_str = "WEIGHTS"; break;
++                case kernel_selector::kernel_argument_types::BIAS: type_str = "BIAS"; break;
++                case kernel_selector::kernel_argument_types::SLOPE: type_str = "SLOPE"; break;
++                case kernel_selector::kernel_argument_types::INTERNAL_BUFFER: type_str = "INTERNAL"; break;
++                default: type_str = "UNKNOWN"; break;
++            }
++            std::cout << "  Arg[" << i << "] Type: " << type_str << ", Index: " << arg.index << std::endl;
++        }*/
++
++
+         stream.set_arguments(*_kernels.front(), cl_kernel.get()->params, args);
+     }
+ 
+     event::ptr execute_impl(const std::vector<event::ptr>& events,
++                                custom_gpu_primitive_inst& instance) override {
++        auto& stream = instance.get_network().get_stream();
++        kernel_arguments_data args;
++
++        //std::cout << "\n [DEBUG_3] before args.inputs.size:" << args.inputs.size();
++        for (auto& dep : instance.dependencies()) {
++            args.inputs.push_back(dep.first->output_memory_ptr());
++        }
++        //std::cout << "\n [DEBUG_3] after args.inputs.size:" << args.inputs.size();
++        //args.inputs.push_back(instance.dependencies()[0].first->output_memory_ptr());
++        //arg 1: output tensor memory
++
++        args.outputs = {instance.output_memory_ptr()};
++
++        //const auto& input_layout = instance.dependencies().at(0).first->get_output_layout();
++        //auto input_dims = input_layout.get_tensor().sizes(format::bfyx);
++
++
++        /*//allocate internal buffers dynamically only if INTERNAL args exist
++        auto& engine = instance.get_network().get_engine();
++        for (const auto& [index, size_expr] : size_expr_map) {
++            std::cout << "\n[DEBUG_3]...............index:" << index;
++            size_t alloc_size = evaluate_size_expr(size_expr, input_dims); // your implementation
++            std::cout << "\n[DEBUG_3]...............alloc_size=" << alloc_size;
++
++            //alllocate internal buffer memory(assuming float, future will be dynamic adjust accordingly type)
++            auto internal_buf = engine.allocate_memory({
++                 data_types::f32,
++                 format::bfyx,
++                 tensor(1, 1, 1, static_cast<int32_t>(alloc_size / sizeof(float)))
++            });
++
++            //push internal buffer memory to kernel arguments
++            args.intermediates.push_back(internal_buf);
++        }*/
++        for (auto& buf : internal_buffers) {
++            args.intermediates.push_back(buf);
++        }
++
++        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
++        // ---- DEBUG: print basic input info ----
++        std::string layer_name = instance.id();
++        std::string kernel_name = cl_kernel ? cl_kernel->code.kernelString->entry_point : "unknown";
++        std::cout << "\n[GPU-CUSTOM] Executing layer: " << layer_name
++              << ", kernel: " << kernel_name
++              << ", inputs=" << instance.dependencies().size()
++              << std::endl;
++        try {
++            auto& mem = args.inputs[0];
++            auto& input_mem = instance.input_memory(0);
++            auto layout = input_mem.get_layout();
++            auto tensor = layout.get_tensor();
++
++            std::cout << "[GPU-DUMP] Input[0] layout: "
++                      << "data_type=" << static_cast<int>(layout.data_type)
++                      << ", format=" << layout.format.to_string()
++                      << ", tensor=" << tensor.to_string()
++                      << ", bytes=" << mem->size()
++                      << std::endl;
++        } catch (const std::exception& e) {
++            std::cout << "[GPU-DUMP] Error reading input memory: " << e.what() << std::endl;
++        }
++        // DEBUG: Check kernel args count
++        std::cout << "[GPU_PLUGIN_DEBUG] Kernel args: "
++                  << cl_kernel->params.arguments.size() << std::endl;
++        // DEBUG: Print GWS/LWS
++        std::cout << "[GPU_PLUGIN_DEBUG] GWS: ";
++        for (auto v : cl_kernel->params.workGroups.global) std::cout << v << " ";
++            std::cout << " | LWS: ";
++        for (auto v : cl_kernel->params.workGroups.local) std::cout << v << " ";
++            std::cout << std::endl;
++        //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
++
++        return stream.enqueue_kernel(*_kernels.front(), cl_kernel->params, args, events, instance.is_output());
++    }
++
++    /*event::ptr execute_impl(const std::vector<event::ptr>& events,
+                                  custom_gpu_primitive_inst& instance) override {
+         auto& stream = instance.get_network().get_stream();
+         kernel_arguments_data args;
+         for (auto& dep : instance.dependencies()) {
+             args.inputs.push_back(dep.first->output_memory_ptr());
+         }
++        // Allocate buffer of size (e.g. 210000 ints)
++        //auto internal_buf = instance.get_network().get_engine().allocate_memory({ data_types::f32, format::bfyx, tensor(1, 1, 1, 210000)});
++        //args.inputs.push_back(internal_buf);
+         args.outputs = { instance.output_memory_ptr() };
+         return stream.enqueue_kernel(*_kernels.front(), cl_kernel.get()->params, args, events, instance.is_output());
+-    }
++    }*/
++
+ 
+     std::vector<kernel::ptr> get_kernels() const override {
+         return _kernels;
+@@ -128,6 +264,9 @@ static kernel_selector::kernel_argument_element get_arg(custom_gpu_primitive::ar
+         case custom_gpu_primitive::arg_output:
+             ret.t = kernel_selector::kernel_argument_types::OUTPUT;
+             break;
++        case custom_gpu_primitive::arg_internal:
++            ret.t = kernel_selector::kernel_argument_types::INTERNAL_BUFFER;
++            break;
+         default:
+             throw std::runtime_error("Unknown argument type");
+             break;
+@@ -249,6 +388,54 @@ static std::string get_jit_constant(const custom_gpu_primitive_node& outer,
+     return oss.str();
+ }
+ 
++static void allocate_internal_buffers(custom_gpu_primitive_inst& instance,
++                               std::vector<cldnn::memory::ptr>& internal_buffers,
++                               const std::unordered_map<uint32_t, std::string>& size_expr_map) {
++    if (internal_buffers.size() > 0)
++        return;
++
++    auto& engine = instance.get_network().get_engine();
++    const auto& input_layout = instance.dependencies().at(0).first->get_output_layout();
++    auto input_dims = input_layout.get_tensor().sizes(cldnn::format::bfyx);
++
++    for (const auto& [index, size_expr] : size_expr_map) {
++        // Evaluate size expression based on input_dims
++        size_t alloc_size = evaluate_size_expr(size_expr, input_dims);
++
++        std::cout << "[allocate_internal_buffers] index: " << index << ", size_expr: " << size_expr
++                  << ", alloc_size: " << alloc_size << std::endl;
++
++        // Allocate memory for internal buffer (assuming float data type here)
++        cldnn::layout internal_layout(cldnn::data_types::f32,
++                                     cldnn::format::bfyx,
++                                     cldnn::tensor(1, 1, 1, static_cast<int32_t>(alloc_size / sizeof(float))));
++
++        auto internal_buf = engine.allocate_memory(internal_layout);
++
++        internal_buffers.push_back(internal_buf);
++    }
++}
++
++static size_t evaluate_size_expr(const std::string& size_expr, const std::vector<int64_t>& input_dims) {
++    std::string expr = size_expr;
++    for (size_t i = 0; i < input_dims.size(); ++i) {
++        std::string token = "INPUT0_DIMS[" + std::to_string(i) + "]";
++        size_t pos = 0;
++        while ((pos = expr.find(token, pos)) != std::string::npos) {
++            expr.replace(pos, token.length(), std::to_string(input_dims[i]));
++            pos += std::to_string(input_dims[i]).length();
++        }
++    }
++    size_t result = 1;
++    std::stringstream ss(expr);
++    std::string item;
++    while (std::getline(ss, item, '*')) {
++        item.erase(std::remove_if(item.begin(), item.end(), ::isspace), item.end());
++        result *= std::stoul(item);
++    }
++    return result;
++}
++
+ static std::unique_ptr<primitive_impl> create(const custom_gpu_primitive_node& arg, const kernel_impl_params& impl_param) {
+     const auto primitive = arg.get_primitive().get();
+ 
+@@ -285,11 +472,25 @@ static std::unique_ptr<primitive_impl> create(const custom_gpu_primitive_node& a
+     cl_kernel->params.workGroups.global = gws;
+     cl_kernel->params.workGroups.local = lws;
+ 
++    std::unordered_map<uint32_t, std::string> size_expr_map;
+     for (const auto& p : primitive->kernel_arguments) {
+         cl_kernel->params.arguments.push_back(get_arg(p));
++        if (p.type == custom_gpu_primitive::arg_internal) {
++            size_expr_map[p.index] = p.size_expr;
++            //printf("\n Hey you catch me.....expr:%s,  index:%d", p.size_expr.c_str(), p.index);
++        }
++    }
++    // std::cout << "\n[DEBUG_1] Kernel arguments parsed from XML:" << std::endl;
++    //for (size_t i = 0; i < primitive->kernel_arguments.size(); ++i) {
++    //    std::cout << "  Arg[" << i << "]: type = " << static_cast<int>(primitive->kernel_arguments[i].type)
++    //              << ", index = " << primitive->kernel_arguments[i].index << std::endl;
++    //}
++    //return std::make_unique<custom_gpu_primitive_impl>(arg, cl_kernel);
++    if (!size_expr_map.empty()) {
++        return std::make_unique<custom_gpu_primitive_impl>(arg, cl_kernel, size_expr_map);
++    } else {
++        return std::make_unique<custom_gpu_primitive_impl>(arg, cl_kernel);
+     }
+-
+-    return std::make_unique<custom_gpu_primitive_impl>(arg, cl_kernel);
+ }
+ 
+ namespace detail {
+diff --git a/src/plugins/intel_gpu/src/graph/impls/ocl/primitive_base.hpp b/src/plugins/intel_gpu/src/graph/impls/ocl/primitive_base.hpp
+index a782883dee..9cbfc1c42a 100644
+--- a/src/plugins/intel_gpu/src/graph/impls/ocl/primitive_base.hpp
++++ b/src/plugins/intel_gpu/src/graph/impls/ocl/primitive_base.hpp
+@@ -266,6 +266,19 @@ protected:
+                 args.intermediates.push_back(m);
+             }
+ 
++            ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
++            // ---- DEBUG: print basic input info ----
++            std::string layer_name = instance.id();
++            std::string kernel_name = _kernel_data.kernelName;
++            std::cout << "\n[GPU-Plugin] Executing layer: " << layer_name
++                  << ", kernel: " << kernel_name
++                  << ", inputs=" << instance.dependencies().size()
++                  << ", gws=" << params.workGroups.global
++                  << ", lws=" << params.workGroups.local
++                  << std::endl;
++            //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
++
++
+             const auto& gws = params.workGroups.global;
+             const auto& lws = params.workGroups.local;
+ 
+diff --git a/src/plugins/intel_gpu/src/graph/impls/ocl_v2/scatter_nd_update.cpp b/src/plugins/intel_gpu/src/graph/impls/ocl_v2/scatter_nd_update.cpp
+index 44a1f874f7..3ab98b4ee2 100644
+--- a/src/plugins/intel_gpu/src/graph/impls/ocl_v2/scatter_nd_update.cpp
++++ b/src/plugins/intel_gpu/src/graph/impls/ocl_v2/scatter_nd_update.cpp
+@@ -307,6 +307,15 @@ public:
+         stages_order.emplace_back(support_opt_kernel(*params) ? KernelsTypes::UPDATE_OPT : KernelsTypes::UPDATE_REF);
+         return stages_order;
+     }
++    /*std::vector<size_t> get_stages_execution_order(const cldnn::primitive_inst& instance) const override {
++         std::vector<size_t> stages_order = {KernelsTypes::COPY_ALL};
++          auto params = instance.get_impl_params();
++          auto test = support_opt_kernel(*params);
++          (void) test;
++         //stages_order.emplace_back(support_opt_kernel(*params) ? KernelsTypes::UPDATE_OPT : KernelsTypes::UPDATE_REF);
++         stages_order.emplace_back(KernelsTypes::UPDATE_REF);
++         return stages_order;
++     }*/
+ };
+ 
+ }  // namespace
+diff --git a/src/plugins/intel_gpu/src/graph/impls/ocl_v2/scatter_nd_update_opt.cl b/src/plugins/intel_gpu/src/graph/impls/ocl_v2/scatter_nd_update_opt.cl
+index dedf98587c..ddb3081c3e 100644
+--- a/src/plugins/intel_gpu/src/graph/impls/ocl_v2/scatter_nd_update_opt.cl
++++ b/src/plugins/intel_gpu/src/graph/impls/ocl_v2/scatter_nd_update_opt.cl
+@@ -89,7 +89,8 @@ KERNEL(scatter_nd_update_opt)(OPTIONAL_SHAPE_INFO_ARG
+ 
+     for (uint i = 0; i < INDICES_LAST_DIM; ++i) {
+         indices_coord[INDICES_RANK - 1] = i;
+-        target_coord[i] = indices[GET_INDICES_INDEX(INPUT1_ORDER)];
++        int indices_val = indices[GET_INDICES_INDEX(INPUT1_ORDER)];
++        target_coord[i] = indices_val + (INPUT0_DIMS * (indices_val < 0));
+     }
+ 
+     for (uint i = INDICES_LAST_DIM; i < OUTPUT_DIMS; ++i) {
+diff --git a/src/plugins/intel_gpu/src/graph/include/custom_gpu_primitive_inst.h b/src/plugins/intel_gpu/src/graph/include/custom_gpu_primitive_inst.h
+index 333595d885..b9d4bd5ae4 100644
+--- a/src/plugins/intel_gpu/src/graph/include/custom_gpu_primitive_inst.h
++++ b/src/plugins/intel_gpu/src/graph/include/custom_gpu_primitive_inst.h
+@@ -42,6 +42,7 @@ public:
+         if (output_layout.format == format::any) {
+             output_layout.format = impl_param.get_input_layout().format;
+         }
++        //std::cout << "\n calc_output_layouts.....";
+         return { output_layout };
+     }
+ 
+diff --git a/src/plugins/intel_gpu/src/kernel_selector/cl_kernels/arg_max_min_axis.cl b/src/plugins/intel_gpu/src/kernel_selector/cl_kernels/arg_max_min_axis.cl
+index e7505bc1a4..a7c21754f9 100644
+--- a/src/plugins/intel_gpu/src/kernel_selector/cl_kernels/arg_max_min_axis.cl
++++ b/src/plugins/intel_gpu/src/kernel_selector/cl_kernels/arg_max_min_axis.cl
+@@ -123,10 +123,6 @@ KERNEL(arg_max_min_modified)(
+     ,__global INPUT0_TYPE* tmp_buffer0
+     ,__global INPUT0_TYPE* tmp_buffer1
+     ,__global INPUT0_TYPE* tmp_buffer2
+-#elif USE_LOCAL_MEMORY
+-    ,__local INPUT0_TYPE* tmp_buffer0
+-    ,__local INPUT0_TYPE* tmp_buffer1
+-    ,__local INPUT0_TYPE* tmp_buffer2
+ #endif
+ )
+ {
+@@ -138,14 +134,11 @@ KERNEL(arg_max_min_modified)(
+     iav_type result[TOP_K];
+ #else
+ #ifdef USE_INTERNAL_BUFFERS
+-    const uint iav_type_size = INPUT0_TYPE_SIZE + 4;
++    const uint iav_type_size = sizeof(iav_type);
+     const uint buffer_size = iav_type_size * VALUES_NUM;
+     const uint buffer_offset = buffer_size * OPERATION_NUM;
+     __global iav_type *result = OFFSET_GLOBAL_PTR(iav_type, tmp_buffer0, output_idx * buffer_size);
+     __global iav_type *temp_buf = OFFSET_GLOBAL_PTR(iav_type, tmp_buffer0, buffer_offset + output_idx * buffer_size);
+-#elif USE_LOCAL_MEMORY
+-    __local iav_type *result = tmp_buffer0;
+-    __local iav_type *temp_buf = tmp_buffer1;
+ #else
+     iav_type result[VALUES_NUM], temp_buf[VALUES_NUM];
+ #endif
+@@ -391,10 +384,6 @@ KERNEL(arg_max_min_modified)(
+         __global uint* merge_counter = OFFSET_GLOBAL_PTR(uint, tmp_buffer1, output_idx * counter_size);
+         __global uint* max_merge_counter = OFFSET_GLOBAL_PTR(uint, tmp_buffer1, counter_offset + output_idx * counter_size);
+         __global bool* subgroup_done = OFFSET_GLOBAL_PTR(bool, tmp_buffer2, output_idx);
+-    #elif USE_LOCAL_MEMORY == 1
+-        __local uint* merge_counter = tmp_buffer0;
+-        __local uint* max_merge_counter = tmp_buffer1;
+-        __local bool* subgroup_done = tmp_buffer2;
+     #else
+         uint merge_counter[group_num];
+         uint max_merge_counter[group_num];
+@@ -461,12 +450,14 @@ KERNEL(arg_max_min_modified)(
+ #else // SORT_BY_VALUE
+     for (uint top_k = 0; top_k < TOP_K; ++top_k) {
+         uint out_position = 0;
++
+         for (uint i = 0; i < TOP_K; ++i) {
+             if (i == top_k)
+                 continue;
+             if (result[i].index < result[top_k].index)
+                 out_position++;
+         }
++
+         indices[AXIS] = out_position;
+ #ifdef TOP_K_ORDER
+         output[FUNC_CALL(get_output_index)(OPTIONAL_SHAPE_INFO_TENSOR indices[0], indices[1], 0, indices[2], indices[3], indices[4])] = TO_OUTPUT_TYPE(result[top_k].value);
+diff --git a/src/plugins/intel_gpu/src/kernel_selector/cl_kernels/generic_eltwise_ref.cl b/src/plugins/intel_gpu/src/kernel_selector/cl_kernels/generic_eltwise_ref.cl
+index 888eb9ff9d..ea692fef42 100644
+--- a/src/plugins/intel_gpu/src/kernel_selector/cl_kernels/generic_eltwise_ref.cl
++++ b/src/plugins/intel_gpu/src/kernel_selector/cl_kernels/generic_eltwise_ref.cl
+@@ -194,4 +194,5 @@ KERNEL(eltwise)(
+ #else
+     output[output_offset] = TO_OUTPUT_TYPE(ACTIVATION_TYPED(out, ACTIVATION_PARAMS_TYPED));
+ #endif
++//printf("\n Eltiwise\n");
+ }
+diff --git a/src/plugins/intel_gpu/src/kernel_selector/kernels/arg_max_min/arg_max_min_kernel_axis.cpp b/src/plugins/intel_gpu/src/kernel_selector/kernels/arg_max_min/arg_max_min_kernel_axis.cpp
+index 140af7c1e2..30f951dbab 100644
+--- a/src/plugins/intel_gpu/src/kernel_selector/kernels/arg_max_min/arg_max_min_kernel_axis.cpp
++++ b/src/plugins/intel_gpu/src/kernel_selector/kernels/arg_max_min/arg_max_min_kernel_axis.cpp
+@@ -85,6 +85,7 @@ ParamsKey ArgMaxMinKernelAxis::GetSupportedKey() const {
+ }
+ 
+ bool ArgMaxMinKernelAxis::Validate(const Params& p) const {
++    //return false;
+     if (!ArgMaxMinKernelBase::Validate(p)) {
+         DO_NOT_USE_THIS_KERNEL(p.layerID);
+     }
+@@ -104,17 +105,22 @@ ArgMaxMinKernelBase::DispatchData ArgMaxMinKernelAxis::SetDefault(const arg_max_
+ 
+     if (!params.has_dynamic_tensors()) {
+         size_t ops_size = getOperationNumber(params);
++        //std::cout << "\n Ops size:" << ops_size;
+         ops_size = ops_size > 1 ? Align(ops_size, 32) : 1;
++        //std::cout << "\n Ops size2:" << ops_size;
+         size_t sort_size = params.argMaxMinSortType == ArgMaxMinSortType::VALUE ? getSortSize(params) : 1;
+ 
+         dispatchData.gws = { ops_size, sort_size, 1 };
+-        dispatchData.lws = { 1, 1, 1};
++        dispatchData.lws = GetOptimalLocalWorkGroupSizes(dispatchData.gws, params.engineInfo);
++        //std::cout << "\n GWS:" << dispatchData.gws[0] << "," << dispatchData.gws[1] << "," << dispatchData.gws[2];
++        //std::cout << "\n LWS:" << dispatchData.lws[0] << "," << dispatchData.lws[1] << "," << dispatchData.lws[2] << "\n";
+     }
+ 
+     return dispatchData;
+ }
+ 
+ void ArgMaxMinKernelAxis::GetUpdateDispatchDataFunc(KernelData& kd) const {
++    //std::cout << "....Pravin\n";
+     kd.update_dispatch_data_func = [this](const Params& params, KernelData& kd) {
+         const auto& prim_params = static_cast<const arg_max_min_params&>(params);
+         auto dispatchData = SetDefault(prim_params);
+@@ -123,51 +129,45 @@ void ArgMaxMinKernelAxis::GetUpdateDispatchDataFunc(KernelData& kd) const {
+         kd.kernels[0].params.workGroups.local = dispatchData.lws;
+         kd.kernels[0].skip_execution = KernelData::SkipKernelExecution(prim_params);
+ 
+-        auto bufferSizeVec = GetTempBufferVec(prim_params, 1);
+-        const size_t total_buffer_size = std::accumulate(bufferSizeVec.begin(), bufferSizeVec.end(), 0);
+-        if (total_buffer_size < params.engineInfo.maxLocalMemSize) {
+-            kd.kernels[0].params.local_memory_args.clear();
+-            kd.kernels[0].params.local_memory_args.push_back(bufferSizeVec.at(0));
+-            kd.kernels[0].params.local_memory_args.push_back(bufferSizeVec.at(1));
+-            kd.kernels[0].params.local_memory_args.push_back(bufferSizeVec.at(2));
++        const size_t elem_size = prim_params.inputs[0].ElementSize();
++        const size_t iav_type_size = Align(elem_size + 4, 4);
++        const size_t sort_size = getSortSize(prim_params);
++        const size_t ops_size = getOperationNumber(prim_params);
++        const size_t group_size = prim_params.topK >= 8 ? prim_params.topK : 8;
++        const size_t group_num = ((sort_size - 1) / group_size) + 1;
++
++        kd.internalBuffers.clear();
++
++        /*bool sort_by_value = (prim_params.argMaxMinSortType == ArgMaxMinSortType::VALUE);
++        std::cout << "elem_size=" << elem_size
++          << " iav_type_size=" << iav_type_size
++          << " sort_size=" << sort_size
++          << " ops_size=" << ops_size
++          << " group_num=" << group_num
++          << " group_size=" << group_size
++          << " topK=" << prim_params.topK //<< "\n";
++          << " params.inputs[0].size:" << prim_params.inputs[0].ElementSize()
++          << " SORT_BY_VALUE = " << sort_by_value << "\n";
++        std::cout << "1:" << (iav_type_size * sort_size * ops_size * 2) << ", 2:" << (4 * group_num * ops_size * 2) << ", 3:" << (ops_size * elem_size) << "\n";*/
++
++        //if ((iav_type_size * sort_size * ops_size * 2) == 11063808000) {
++        if (prim_params.topK == 1) {
++            kd.internalBuffers.push_back(iav_type_size * sort_size * 2);
++            //std::cout << "Pravin 1:" << (iav_type_size * sort_size * 2) << "\n";
+         } else {
+-            kd.internalBuffers.clear();
+-            kd.internalBuffers.push_back(bufferSizeVec.at(0));
+-            kd.internalBuffers.push_back(bufferSizeVec.at(1));
+-            kd.internalBuffers.push_back(bufferSizeVec.at(2));
+-            kd.internalBufferDataType = prim_params.inputs[0].GetDType();
++             kd.internalBuffers.push_back(iav_type_size * sort_size * ops_size * 2);
++             //kd.internalBuffers.push_back(4 * group_num * ops_size * 2);
++             //kd.internalBuffers.push_back(ops_size * elem_size);
++             //kd.internalBufferDataType = prim_params.inputs[0].GetDType();
+         }
++        //kd.internalBuffers.clear();
++        //kd.internalBuffers.push_back(iav_type_size * sort_size * ops_size * 2);
++        kd.internalBuffers.push_back(4 * group_num * ops_size * 2);
++        kd.internalBuffers.push_back(ops_size * elem_size);
++        kd.internalBufferDataType = prim_params.inputs[0].GetDType();
+     };
+ }
+ 
+-
+-std::vector<size_t> ArgMaxMinKernelAxis::GetTempBufferVec(const arg_max_min_params& params, bool dynamic) const {
+-    std::vector<size_t> buffer_size;
+-
+-    const size_t elem_size = params.inputs[0].ElementSize();
+-    const size_t iav_type_size = elem_size + 4;
+-    const size_t sort_size = getSortSize(params);
+-    const size_t ops_size = getOperationNumber(params);
+-    const size_t group_size = params.topK >= 8 ? params.topK : 8;
+-    const size_t group_num = ((sort_size - 1) / group_size) + 1;
+-
+-    if (dynamic) {
+-        const size_t buffer0_size = iav_type_size * sort_size * 2;
+-        const size_t buffer1_size = iav_type_size * sort_size * 2;
+-        const size_t buffer2_size = group_num;
+-
+-        buffer_size.assign({buffer0_size, buffer1_size, buffer2_size});
+-    } else {
+-        const size_t buffer0_size = iav_type_size * sort_size * ops_size * 2;
+-        const size_t buffer1_size = 4 * group_num * ops_size * 2;
+-        const size_t buffer2_size = ops_size * elem_size;
+-
+-        buffer_size.assign({buffer0_size, buffer1_size, buffer2_size});
+-    }
+-
+-    return buffer_size;
+-}
+-
+ KernelsData ArgMaxMinKernelAxis::GetKernelsData(const Params& params) const {
+     if (!Validate(params)) {
+         return {};
+@@ -178,7 +178,6 @@ KernelsData ArgMaxMinKernelAxis::GetKernelsData(const Params& params) const {
+     auto dispatchData = SetDefault(orgParams);
+     KernelData kd = KernelData::Default<arg_max_min_params>(params);
+     GetUpdateDispatchDataFunc(kd);
+-    auto bufferSizeVec = GetTempBufferVec(orgParams, orgParams.has_dynamic_tensors());
+ 
+     auto cldnn_jit = GetJitConstants(orgParams);
+     auto entry_point = GetEntryPoint(kernelName, orgParams.layerID, params);
+@@ -199,23 +198,13 @@ KernelsData ArgMaxMinKernelAxis::GetKernelsData(const Params& params) const {
+                      orgParams.outputs_num,
+                      orgParams.is_shape_agnostic);
+ 
+-    const size_t total_buffer_size = std::accumulate(bufferSizeVec.begin(),
+-            bufferSizeVec.end(), 0);
+-
+-    if (is_dynamic) {
+-        kernel.params.arguments.push_back({ArgumentDescriptor::Types::LOCAL_MEMORY_SIZE, 0});
+-        kernel.params.arguments.push_back({ArgumentDescriptor::Types::LOCAL_MEMORY_SIZE, 1});
+-        kernel.params.arguments.push_back({ArgumentDescriptor::Types::LOCAL_MEMORY_SIZE, 2});
+-        kd.kernels[0].params.local_memory_args.push_back(bufferSizeVec.at(0));
+-        kd.kernels[0].params.local_memory_args.push_back(bufferSizeVec.at(1));
+-        kd.kernels[0].params.local_memory_args.push_back(bufferSizeVec.at(2));
+-    } else if (total_buffer_size > orgParams.engineInfo.maxLocalMemSize) {
++    if (is_dynamic || getSortSize(orgParams) * orgParams.inputs[0].ElementSize() > 4096) {
+         kernel.params.arguments.push_back({ArgumentDescriptor::Types::INTERNAL_BUFFER, 0});
+         kernel.params.arguments.push_back({ArgumentDescriptor::Types::INTERNAL_BUFFER, 1});
+         kernel.params.arguments.push_back({ArgumentDescriptor::Types::INTERNAL_BUFFER, 2});
+-        kd.internalBuffers.push_back(bufferSizeVec.at(0));
+-        kd.internalBuffers.push_back(bufferSizeVec.at(1));
+-        kd.internalBuffers.push_back(bufferSizeVec.at(2));
++        kd.internalBuffers.push_back(orgParams.inputs[0].PhysicalSizeInBytes());
++        kd.internalBuffers.push_back(orgParams.inputs[0].PhysicalSizeInBytes());
++        kd.internalBuffers.push_back(orgParams.inputs[0].PhysicalSizeInBytes());
+         kd.internalBufferDataType = orgParams.inputs[0].GetDType();
+     }
+ 
+@@ -228,7 +217,6 @@ KernelsPriority ArgMaxMinKernelAxis::GetKernelsPriority(const Params& /*params*/
+ 
+ JitConstants ArgMaxMinKernelAxis::GetJitConstants(const arg_max_min_params& params) const {
+     auto jit = ArgMaxMinKernelBase::GetJitConstants(params);
+-    auto bufferSizeVec = GetTempBufferVec(params, params.has_dynamic_tensors());
+ 
+     if (params.has_dynamic_tensors()) {
+         const std::string operation_num = getOperationNumberString(params);
+@@ -245,16 +233,7 @@ JitConstants ArgMaxMinKernelAxis::GetJitConstants(const arg_max_min_params& para
+     if (params.values_first)
+         jit.AddConstant(MakeJitConstant("TOP_K_ORDER", 1));
+ 
+-    const size_t total_buffer_size = std::accumulate(bufferSizeVec.begin(),
+-            bufferSizeVec.end(), 0);
+-
+-    // For dynamic case, total_buffer_size will be 0.  If larger buffer are
+-    // requested during runtime and greater than local memory size
+-    // the kernel will have incorrect data
+-    // total_buffer_size only for static case
+-    if (params.has_dynamic_tensors()) {
+-        jit.AddConstant(MakeJitConstant("USE_LOCAL_MEMORY", 1));
+-    } else if (total_buffer_size > params.engineInfo.maxLocalMemSize) {
++    if (params.has_dynamic_tensors() || getSortSize(params) * params.inputs[0].ElementSize() > 4096) {
+         jit.AddConstant(MakeJitConstant("USE_INTERNAL_BUFFERS", 1));
+     }
+ 
+diff --git a/src/plugins/intel_gpu/src/kernel_selector/kernels/arg_max_min/arg_max_min_kernel_axis.h b/src/plugins/intel_gpu/src/kernel_selector/kernels/arg_max_min/arg_max_min_kernel_axis.h
+index 4b8630f4eb..1270f6feb4 100644
+--- a/src/plugins/intel_gpu/src/kernel_selector/kernels/arg_max_min/arg_max_min_kernel_axis.h
++++ b/src/plugins/intel_gpu/src/kernel_selector/kernels/arg_max_min/arg_max_min_kernel_axis.h
+@@ -17,7 +17,6 @@ public:
+     KernelsData GetKernelsData(const Params& params) const override;
+     KernelsPriority GetKernelsPriority(const Params& params) const override;
+     ParamsKey GetSupportedKey() const override;
+-    std::vector<size_t> GetTempBufferVec(const arg_max_min_params& params, bool dynamic) const;
+ private:
+     bool Validate(const Params&) const override;
+     void GetUpdateDispatchDataFunc(KernelData& kd) const override;
+diff --git a/src/plugins/intel_gpu/src/kernel_selector/kernels/eltwise/eltwise_kernel_base.cpp b/src/plugins/intel_gpu/src/kernel_selector/kernels/eltwise/eltwise_kernel_base.cpp
+index facf41d87d..8a79941522 100644
+--- a/src/plugins/intel_gpu/src/kernel_selector/kernels/eltwise/eltwise_kernel_base.cpp
++++ b/src/plugins/intel_gpu/src/kernel_selector/kernels/eltwise/eltwise_kernel_base.cpp
+@@ -99,6 +99,12 @@ Datatype EltwiseKernelBase::GetAccumulatorType(const eltwise_params &params) con
+     if (params.int8_quantization)
+         return Datatype::INT32;
+ 
++     // Force FP16 or lower inputs to accumulate in F32
++    for (auto& in : params.inputs) {
++        if (in.GetDType() == Datatype::F16 || in.GetDType() == Datatype::UINT8 || in.GetDType() == Datatype::INT8)
++            return Datatype::F32;
++    }
++
+     Datatype types[] = { Datatype::F32, Datatype::F16, Datatype::INT64, Datatype::INT32, Datatype::UINT32};
+ 
+     for (Datatype type : types)
+diff --git a/src/plugins/intel_gpu/src/plugin/custom_layer.cpp b/src/plugins/intel_gpu/src/plugin/custom_layer.cpp
+index 5d23c936cc..a8e0520a6b 100644
+--- a/src/plugins/intel_gpu/src/plugin/custom_layer.cpp
++++ b/src/plugins/intel_gpu/src/plugin/custom_layer.cpp
+@@ -107,6 +107,12 @@ void CustomLayer::ProcessBuffersNode(const pugi::xml_node & node) {
+             kp.type = ParamType::Input;
+         } else if (typeStr.compare("output") == 0) {
+             kp.type = ParamType::Output;
++        } else if (typeStr.compare("internal") == 0) {  //pravin
++            kp.type = ParamType::Internal;
++            kp.size_expr = get_str_attr(tensorNode, "size", "");
++            CheckAndReturnError(kp.size_expr.empty(), "Internal buffer requires a size attribute");
++            //printf("\nInternal buffer detected with size expression: %s\n", kp.size_expr.c_str());
++            //printf("\n ,,,,,,,cought!\n");
+         } else {
+             CheckAndReturnError(true, "Tensor node has an invalid type: " << typeStr);
+         }
+diff --git a/src/plugins/intel_gpu/src/plugin/ops/custom.cpp b/src/plugins/intel_gpu/src/plugin/ops/custom.cpp
+index 1f3bfe003f..9e403a07d4 100644
+--- a/src/plugins/intel_gpu/src/plugin/ops/custom.cpp
++++ b/src/plugins/intel_gpu/src/plugin/ops/custom.cpp
+@@ -162,6 +162,13 @@ void CreateCustomOp(ProgramBuilder& p, const std::shared_ptr<ov::Node>& op, Cust
+             outputFormat = param.format;
+             break;
+         }
++        case CustomLayer::ParamType::Internal: {
++           kernelParameters.resize(kernelParameters.size() > size_t(param.paramIndex + 1) ? kernelParameters.size() : size_t(param.paramIndex + 1));
++           kernelParameters[param.paramIndex].type = cldnn::custom_gpu_primitive::arg_internal;
++           kernelParameters[param.paramIndex].index = static_cast<cldnn::custom_gpu_primitive::arg_index>(param.portIndex);
++           kernelParameters[param.paramIndex].size_expr = param.size_expr;
++           break;
++        }
+         default:
+             OPENVINO_THROW("Invalid custom layer param type: ", param.type, " in operation: ", op->get_friendly_name());
+         }
+diff --git a/src/plugins/intel_gpu/src/runtime/ocl/ocl_stream.cpp b/src/plugins/intel_gpu/src/runtime/ocl/ocl_stream.cpp
+index f5e9b74a5e..034c31bf8b 100644
+--- a/src/plugins/intel_gpu/src/runtime/ocl/ocl_stream.cpp
++++ b/src/plugins/intel_gpu/src/runtime/ocl/ocl_stream.cpp
+@@ -98,8 +98,15 @@ void set_arguments_impl(ocl_kernel_type& kernel,
+                 status = set_kernel_arg(kernel, i, data.fused_op_inputs[args[i].index]);
+                 break;
+             case args_t::INTERNAL_BUFFER:
+-                OPENVINO_ASSERT(args[i].index < data.intermediates.size() && data.intermediates[args[i].index],
+-                                "The allocated intermediate memory is necessary to set kernel arguments.");
++                //OPENVINO_ASSERT(args[i].index < data.intermediates.size() && data.intermediates[args[i].index],
++                //                "The allocated intermediate memory is necessary to set kernel arguments.");
++                if (!(args[i].index < data.intermediates.size() && data.intermediates[args[i].index])) {
++                     std::cerr << "[GPU] Failed to set intermediate buffer for kernel index " << i
++                       << ", arg index: " << args[i].index
++                       << ", intermediates size: " << data.intermediates.size()
++                       << ", kernel handle: " << kernel.get() << "\n";
++                       OPENVINO_ASSERT(false, "The allocated intermediate memory is necessary to set kernel arguments.");
++                }
+                 status = set_kernel_arg(kernel, i, data.intermediates[args[i].index]);
+                 break;
+             case args_t::OUTPUT:
+diff --git a/src/plugins/intel_gpu/tests/functional/shared_tests_instances/single_layer_tests/power.cpp b/src/plugins/intel_gpu/tests/functional/shared_tests_instances/single_layer_tests/power.cpp
+index 18a7bcbc2e..f66b68b5d7 100644
+--- a/src/plugins/intel_gpu/tests/functional/shared_tests_instances/single_layer_tests/power.cpp
++++ b/src/plugins/intel_gpu/tests/functional/shared_tests_instances/single_layer_tests/power.cpp
+@@ -33,6 +33,17 @@ std::vector<ov::element::Type> model_types = {
+     ov::element::f16,
+ };
+ 
++// -----------------------------------------------------------------------------
++// Regression test for Power(x, -1.0) bug in GPU plugin
++// -----------------------------------------------------------------------------
++std::vector<std::vector<ov::Shape>> input_shape_reciprocal_bug = {
++    {{1, 1, 1, 1}},
++};
++
++std::vector<std::vector<float>> powers_reciprocal_bug = {
++    {-1.0f},
++};
++
+ INSTANTIATE_TEST_SUITE_P(smoke_power, PowerLayerTest,
+                         ::testing::Combine(
+                                 ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(input_shape_static)),
+@@ -40,4 +51,141 @@ INSTANTIATE_TEST_SUITE_P(smoke_power, PowerLayerTest,
+                                 ::testing::ValuesIn(powers),
+                                 ::testing::Values(ov::test::utils::DEVICE_GPU)),
+                         PowerLayerTest::getTestCaseName);
++
++INSTANTIATE_TEST_SUITE_P(smoke_power_reciprocal_bug, PowerLayerTest,
++    ::testing::Combine(
++        ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(input_shape_reciprocal_bug)),
++        ::testing::Values(ov::element::f32),
++        ::testing::ValuesIn(powers_reciprocal_bug),
++        ::testing::Values(ov::test::utils::DEVICE_GPU)),
++    PowerLayerTest::getTestCaseName);
++
++
++
+ }  // namespace
++   //
++   //
++#include <openvino/openvino.hpp>
++#include <openvino/opsets/opset1.hpp>
++#include <iostream>
++#include <cmath>
++
++// test to confirm Power(x, -1) = 1/x behavior on GPU
++TEST(PowerDirectStandalone, GPU_Power_Reciprocal_Print) {
++    try {
++        ov::Core core;
++
++        ov::element::Type_t et = ov::element::f32;
++        ov::Shape shape{1, 1, 1, 1};
++
++        //input tensor: e.g. 0.11054
++        auto param = std::make_shared<ov::op::v0::Parameter>(et, shape);
++        auto one   = ov::op::v0::Constant::create(et, shape, {1.0f});
++
++        //build reciprocal explicitly: Divide(1, x)
++        auto reciprocal = std::make_shared<ov::op::v1::Divide>(one, param);
++
++        auto model = std::make_shared<ov::Model>(
++            ov::NodeVector{reciprocal},
++            ov::ParameterVector{param},
++            "GPU_Power_Reciprocal_Test");
++
++        auto compiled = core.compile_model(model, "GPU");
++        auto request = compiled.create_infer_request();
++
++        ov::Tensor input_tensor(et, shape);
++        input_tensor.data<float>()[0] = 0.11054f;
++        request.set_input_tensor(input_tensor);
++
++        request.infer();
++
++        ov::Tensor output_tensor = request.get_output_tensor(0);
++        float out_val = output_tensor.data<float>()[0];
++        float expected = 1.0f / 0.11054f;
++
++        std::cout << "\n[PowerTest] Input: " << 0.11054f << std::endl;
++        std::cout << "[PowerTest] Output: " << out_val << std::endl;
++        std::cout << "[PowerTest] Expected: " << expected << std::endl;
++        std::cout << "[PowerTest] Diff: " << fabs(out_val - expected) << std::endl;
++
++        ASSERT_LT(std::fabs(out_val - expected), 1e-2f)
++            << "Output deviation too large for reciprocal test.";
++    } catch (const std::exception& e) {
++        std::cerr << "Exception in PowerReciprocal test: " << e.what() << std::endl;
++        FAIL();
++    }
++}
++
++TEST(PowerDirectStandalone_GPU_PowerOp, Power_fp32) {
++    std::cout << "[PowerOpTest] Testing Power(x, -1.0) on GPU" << std::endl;
++
++    // input
++    std::vector<float> input_data = {0.094867f};
++    auto input_tensor = ov::Tensor(ov::element::f32, {1}, input_data.data());
++
++    // create model: Power(x, -1)
++    auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{1});
++    auto exponent = ov::op::v0::Constant::create(ov::element::f32, ov::Shape{}, {-1.0f});
++
++    auto power = std::make_shared<ov::op::v1::Power>(param, exponent);
++    auto model = std::make_shared<ov::Model>(ov::OutputVector{power}, ov::ParameterVector{param});
++
++    // create Core + GPU compiled model
++    ov::Core core;
++    auto compiled_model = core.compile_model(model, "GPU");
++    auto infer_request = compiled_model.create_infer_request();
++
++    // read inference
++    infer_request.set_input_tensor(input_tensor);
++    infer_request.infer();
++
++    // read output
++    auto output_tensor = infer_request.get_output_tensor();
++    float* output_data = output_tensor.data<float>();
++
++    float expected = 1.0f / input_data[0];
++    //float diff = std::abs(output_data[0] - expected);
++
++    std::cout << "[PowerOpTest_f32] Input: " << input_data[0] << std::endl;
++    std::cout << "[PowerOpTest_f32] Output: " << output_data[0] << std::endl;
++    std::cout << "[PowerOpTest_f32] Expected: " << expected << std::endl;
++    //std::cout << "[PowerOpTest_f32] Diff: " << diff << std::endl;
++
++    ASSERT_NEAR(output_data[0], expected, 1e-2f);
++}
++
++TEST(PowerDirectStandalone_GPU_PowerOp, Power_fp16) {
++    std::cout << "[PowerOpTest] Testing Power(x, -1.0) on GPU (fixed)" << std::endl;
++
++    // Proper half data
++    std::vector<ov::float16> input_data = {ov::float16(0.094867f)};
++    auto input_tensor = ov::Tensor(ov::element::f16, {1}, input_data.data());
++
++    // Model
++    auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f16, ov::Shape{1});
++    auto exponent = ov::op::v0::Constant::create(ov::element::f16, {1}, {ov::float16(-1.0f)});
++    auto power = std::make_shared<ov::op::v1::Power>(param, exponent);
++    auto model = std::make_shared<ov::Model>(ov::OutputVector{power}, ov::ParameterVector{param});
++
++    ov::Core core;
++    auto compiled_model = core.compile_model(model, "GPU");
++    auto infer_request = compiled_model.create_infer_request();
++
++    infer_request.set_input_tensor(input_tensor);
++    infer_request.infer();
++
++    auto output_tensor = infer_request.get_output_tensor();
++    auto output_data = output_tensor.data<ov::float16>();
++
++    float output_f32 = static_cast<float>(output_data[0]);
++    float expected = 1.0f / static_cast<float>(input_data[0]);
++    //float diff = std::abs(output_f32 - expected);
++
++    std::cout << "[PowerOpTest_f16] Input: " << static_cast<float>(input_data[0]) << std::endl;
++    std::cout << "[PowerOpTest_f16] Output: " << output_f32 << std::endl;
++    std::cout << "[PowerOpTest_f16] Expected: " << expected << std::endl;
++    //std::cout << "[PowerOpTest_f16] Diff: " << diff << std::endl;
++
++    ASSERT_NEAR(output_f32, expected, 1e-2f); // looser tolerance for FP16
++}
++
+diff --git a/src/plugins/intel_gpu/tests/unit/test_cases/arg_max_gpu_test.cpp b/src/plugins/intel_gpu/tests/unit/test_cases/arg_max_gpu_test.cpp
+index a7033a2097..b6370eb5f4 100644
+--- a/src/plugins/intel_gpu/tests/unit/test_cases/arg_max_gpu_test.cpp
++++ b/src/plugins/intel_gpu/tests/unit/test_cases/arg_max_gpu_test.cpp
+@@ -73,6 +73,7 @@ struct is_uint8_input : std::false_type {};
+ template<format::type Fmt>
+ struct is_uint8_input<arg_max_input_types<Fmt, uint8_t>> : std::true_type {};
+ 
++
+ TYPED_TEST(argmax_gpu_test, base) {
+     //  Input  : 2x4x2x2
+     static const int32_t x_size = 2, y_size = 2, feature_num = 4, batch_num = 2;
+@@ -126,6 +127,121 @@ TYPED_TEST(argmax_gpu_test, base) {
+     this->checkOutput(output, out_size);
+ }
+ 
++////////////////////////////////////////////////////////////////////////////////////////////////////
++//Pravin
++TEST(arg_max_min_gpu_axis_debug, f32) {
++    const int batch_num = 1;
++    const int feature_num = 18000;
++    const int x_size = 1;
++    const int y_size = 38416;
++    const int top_k = 1;
++
++    auto& engine = get_test_engine();
++
++    auto input_layout_desc = layout{data_types::f32, format::bfyx, {batch_num, feature_num, x_size, y_size}};
++    auto input = engine.allocate_memory(input_layout_desc);
++
++    //input data
++    std::vector<float> input_vec(batch_num * feature_num * x_size * y_size);
++    for (size_t i = 0; i < input_vec.size(); ++i)
++        input_vec[i] = static_cast<float>(std::sin(i * 0.001f));
++    
++    //std::vector<float> input_vec(batch_num * feature_num * x_size * y_size, 0.0f);
++    //set_values(input, input_vec);
++
++
++    topology topology;
++    topology.add(input_layout("input", input->get_layout()));
++
++    topology.add(arg_max_min(
++        "arg_max",
++        { input_info("input") },
++        ov::op::TopKMode::MIN,
++        top_k,
++        2, // axis = feature
++        ov::op::TopKSortType::SORT_INDICES,
++        false,
++        false,
++        data_types::i32
++    ));
++
++    try {
++        network network(engine, topology, get_test_default_config(engine));
++        network.set_input_data("input", input);
++
++        std::cout << "Tensor rank: " << input->get_layout().get_rank() << "\n";
++        auto outputs = network.execute();
++        ASSERT_EQ(outputs.size(), size_t(1));
++
++        auto output = outputs.at("arg_max").get_memory();
++        cldnn::mem_lock<int32_t> output_ptr(output, get_test_stream());
++
++        //checks ouput
++        for (size_t i = 0; i < 18000; i++) {
++            ASSERT_GE(output_ptr[i], 0);
++            ASSERT_LT(output_ptr[i], feature_num);
++        }
++
++        std::cout << "[INFO] Output size: " << output_ptr.size() << std::endl;
++
++    } catch (const std::exception& e) {
++        std::cerr << "[ERROR] Exception during ArgMax execution: " << e.what() << std::endl;
++        FAIL() << "Inference failed with exception: " << e.what();
++    }
++}
++////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
++
++
++TEST(arg_max_min_gpu_axis_feature_topk1_min, f32) {
++    const int batch_num = 1;
++    //const int feature_num = 180;
++    const int feature_num = 18000;
++    const int x_size = 1;
++    //const int y_size = 384;
++    const int y_size = 38416;
++    const int top_k = 1;
++    auto& engine = get_test_engine();
++
++    auto input_layout_desc = layout{data_types::f32, format::bfyx, {batch_num, feature_num, x_size, y_size}};
++    auto input = engine.allocate_memory(input_layout_desc);
++
++    //input data
++    std::vector<float> input_vec(batch_num * feature_num * x_size * y_size);
++    for (size_t i = 0; i < input_vec.size(); ++i)
++        input_vec[i] = static_cast<float>(std::sin(i * 0.001f));
++
++    set_values(input, input_vec);
++
++    topology topology;
++    topology.add(input_layout("input", input->get_layout()));
++    topology.add(arg_max_min("arg_min",
++                             { input_info("input") },
++                             ov::op::TopKMode::MIN,
++                             top_k,
++                             1,  //axis = feature
++                             ov::op::TopKSortType::SORT_INDICES,
++                             false,  //values_first
++                             false,  //stable
++                             data_types::i32));
++
++    network network(engine, topology, get_test_default_config(engine));
++    network.set_input_data("input", input);
++    auto outputs = network.execute();
++
++    ASSERT_EQ(outputs.size(), size_t(1));
++    auto output = outputs.at("arg_min").get_memory();
++
++    cldnn::mem_lock<int32_t> output_ptr(output, get_test_stream());
++
++    //output
++    for (size_t i = 0; i < y_size * batch_num * top_k; i++) {
++        ASSERT_GE(output_ptr[i], 0);
++        ASSERT_LT(output_ptr[i], feature_num);
++    }
++    std::cout << "output_ptr size:" << output_ptr.size() << "\n";
++}
++////////////////////////////////////////////////////////////////////////////////////////////////////////////////
++
+ // TODO: extend test with layouts to 3d case in scope of arg_max operation layouts support
+ TEST(arg_max_gpu_min_axis_batch_bfzyx, i32) {
+     //  Input  : 2x3x2x2
+diff --git a/src/plugins/intel_gpu/tests/unit/test_cases/eltwise_gpu_test.cpp b/src/plugins/intel_gpu/tests/unit/test_cases/eltwise_gpu_test.cpp
+index 7e4c403bb8..72029aa212 100644
+--- a/src/plugins/intel_gpu/tests/unit/test_cases/eltwise_gpu_test.cpp
++++ b/src/plugins/intel_gpu/tests/unit/test_cases/eltwise_gpu_test.cpp
+@@ -364,6 +364,8 @@ void run_eltwise_int_shift_generic_test(cldnn::eltwise_mode mode) {
+ #undef ELTWISE_INT_TEST_CASES
+ }
+ 
++
++
+ void run_eltwise_int_bitwise_generic_test(cldnn::eltwise_mode mode) {
+     cldnn::format test_inputs_fmt = cldnn::format::bfyx;
+     const int dim_size = 227;
+@@ -396,6 +398,56 @@ void run_eltwise_int_bitwise_generic_test(cldnn::eltwise_mode mode) {
+ }
+ }  // namespace
+ 
++//Pravin
++TEST(eltwise_gpu_f32, greater_equal_coarse_point_matching) {
++    auto& engine = get_test_engine();
++
++    //input
++    const int batch = 12;
++    const int feature_src1 = 18000;
++    const int spatial_y = 38416;
++    const int x = 1;
++
++    auto src0 = engine.allocate_memory({ data_types::f32, format::bfyx, { batch, 1, x, spatial_y } });
++    auto src1 = engine.allocate_memory({ data_types::f32, format::bfyx, { batch, feature_src1, x, 1 } });
++
++    //dummy data src 0
++    std::vector<float> src0_vals(batch * 1 * x * spatial_y, 0.0f); // example all zeros
++    set_values(src0, src0_vals);
++
++    //src 1
++    std::vector<float> src1_vals(batch * feature_src1 * x * 1);
++    for (size_t i = 0; i < src1_vals.size(); ++i) {
++        src1_vals[i] = static_cast<float>(i) / feature_src1; // 0.0 → 1.0 approx
++    }
++    set_values(src1, src1_vals);
++
++    topology tpl;
++    tpl.add(input_layout("src0", src0->get_layout()));
++    tpl.add(input_layout("src1", src1->get_layout()));
++    tpl.add(eltwise("eltwise", { input_info("src0"), input_info("src1") }, eltwise_mode::ge));
++
++    //inference
++    network net(engine, tpl, get_test_default_config(engine));
++    net.set_input_data("src0", src0);
++    net.set_input_data("src1", src1);
++    auto outputs = net.execute();
++
++    ASSERT_EQ(outputs.size(), size_t(1));
++    ASSERT_EQ(outputs.begin()->first, "eltwise");
++
++    auto output = outputs.at("eltwise").get_memory();
++    cldnn::mem_lock<int8_t> output_ptr(output, get_test_stream());
++
++    for (size_t f = 0; f < feature_src1; ++f) {
++        for (size_t y = 0; y < spatial_y; ++y) {
++            int8_t expected = (src0_vals[y] >= src1_vals[f]) ? 1 : 0; // broadcasting logic
++            ASSERT_EQ(expected, output_ptr[f * spatial_y + y]);
++        }
++    }
++}
++////////////////////////////////////////////////////////////////////////////////////////////////////
++
+ TEST(eltwise_gpu_f32, equal_in2_float_out1_int) {
+     //  Input2 : 2x2x2x2
+     //  Input  : 2x2x2x2

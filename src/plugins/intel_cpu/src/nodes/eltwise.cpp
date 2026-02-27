@@ -462,6 +462,13 @@ Eltwise::Eltwise(const std::shared_ptr<ov::Node>& op, const GraphContext::CPtr& 
     if (!isSupportedOperation(op, errorMessage)) {
         OPENVINO_THROW_NOT_IMPLEMENTED(errorMessage);
     }
+    /*std::string name = op->get_friendly_name();
+    if (name == "/coarse_point_matching/Sub_3") {
+        std::cout << ">>> Found target ADD node" << std::endl;
+        std::cout << "layer_name:"<< name << "\n";
+        std::cout << "[Eltwise] node: " << getName() << std::endl;
+        m_attrs.data.debug_name = getName();
+    }*/
     getInitializers().at(op->get_type_info())(op, *this);
     m_attrs.data.algo = getAlgorithm();
 }
@@ -847,10 +854,29 @@ void Eltwise::prepareParams() {
 
 void Eltwise::execute([[maybe_unused]] const dnnl::stream& strm) {
     OPENVINO_DEBUG_ASSERT(m_executor, "Eltwise executor not created");
-    m_executor->execute(m_memory);
+    /*
+    std::string name = getName();
+    std::cout << "[Execute1] node: " << getName() << std::endl;
+    if (name == "/coarse_point_matching/Sub_3") {
+        std::cout << ">>> Execute1:Found target ADD node" << std::endl;
+        std::cout << "layer_name:"<< name << "\n";
+        std::cout << "[Eltwise] node: " << getName() << std::endl;
+        m_attrs.data.debug_name = getName();
+   }*/
+   m_executor->execute(m_memory);
+
 }
 
 void Eltwise::executeDynamicImpl(const dnnl::stream& strm) {
+    /*
+    std::string name = getName();
+    std::cout << "[Execute2] node: " << getName() << std::endl;
+    if (name == "/coarse_point_matching/Sub_3") {
+        std::cout << ">>> Execute2:Found target ADD node" << std::endl;
+        std::cout << "layer_name:"<< name << "\n";
+        std::cout << "[Eltwise] node: " << getName() << std::endl;
+        m_attrs.data.debug_name = getName();
+   }*/
     execute(strm);
 }
 

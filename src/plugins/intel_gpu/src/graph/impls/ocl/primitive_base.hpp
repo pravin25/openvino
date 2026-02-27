@@ -266,6 +266,19 @@ protected:
                 args.intermediates.push_back(m);
             }
 
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            // ---- DEBUG: print basic input info ----
+            /*std::string layer_name = instance.id();
+            std::string kernel_name = _kernel_data.kernelName;
+            std::cout << "\n[GPU-Plugin] Executing layer: " << layer_name
+                  << ", kernel: " << kernel_name
+                  << ", inputs=" << instance.dependencies().size()
+                  << ", gws=" << params.workGroups.global
+                  << ", lws=" << params.workGroups.local
+                  << std::endl;*/
+            //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
             const auto& gws = params.workGroups.global;
             const auto& lws = params.workGroups.local;
 

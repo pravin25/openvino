@@ -181,10 +181,12 @@ void log_memory_to_file(memory::ptr mem, layout data_layout, stream& stream, std
     auto actual_mem = mem->get_engine()->reinterpret_buffer(*mem, data_layout);
 
     auto mem_dt = actual_mem->get_layout().data_type;
-    if (mem_dt == cldnn::data_types::f32)
+    if (mem_dt == cldnn::data_types::f32) {
+        //std::cout << "\n is F32....";
         dump<float>(actual_mem, stream, file_stream, dump_raw);
-    else if (mem_dt == cldnn::data_types::f16)
-        dump<ov::float16>(actual_mem, stream, file_stream, dump_raw);
+    } else if (mem_dt == cldnn::data_types::f16) {
+        //std::cout << "\n is F16....";
+        dump<ov::float16>(actual_mem, stream, file_stream, dump_raw);}
     else if (mem_dt == cldnn::data_types::i64)
         dump<int64_t>(actual_mem, stream, file_stream, dump_raw);
     else if (mem_dt == cldnn::data_types::i32)

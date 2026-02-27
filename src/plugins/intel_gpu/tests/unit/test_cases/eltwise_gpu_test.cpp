@@ -364,6 +364,8 @@ void run_eltwise_int_shift_generic_test(cldnn::eltwise_mode mode) {
 #undef ELTWISE_INT_TEST_CASES
 }
 
+
+
 void run_eltwise_int_bitwise_generic_test(cldnn::eltwise_mode mode) {
     cldnn::format test_inputs_fmt = cldnn::format::bfyx;
     const int dim_size = 227;
@@ -395,6 +397,56 @@ void run_eltwise_int_bitwise_generic_test(cldnn::eltwise_mode mode) {
 #undef ELTWISE_INT_TEST_CASES
 }
 }  // namespace
+
+//Pravin
+TEST(eltwise_gpu_f32, greater_equal_coarse_point_matching) {
+    auto& engine = get_test_engine();
+
+    //input
+    const int batch = 12;
+    const int feature_src1 = 18000;
+    const int spatial_y = 38416;
+    const int x = 1;
+
+    auto src0 = engine.allocate_memory({ data_types::f32, format::bfyx, { batch, 1, x, spatial_y } });
+    auto src1 = engine.allocate_memory({ data_types::f32, format::bfyx, { batch, feature_src1, x, 1 } });
+
+    //dummy data src 0
+    std::vector<float> src0_vals(batch * 1 * x * spatial_y, 0.0f); // example all zeros
+    set_values(src0, src0_vals);
+
+    //src 1
+    std::vector<float> src1_vals(batch * feature_src1 * x * 1);
+    for (size_t i = 0; i < src1_vals.size(); ++i) {
+        src1_vals[i] = static_cast<float>(i) / feature_src1; // 0.0 → 1.0 approx
+    }
+    set_values(src1, src1_vals);
+
+    topology tpl;
+    tpl.add(input_layout("src0", src0->get_layout()));
+    tpl.add(input_layout("src1", src1->get_layout()));
+    tpl.add(eltwise("eltwise", { input_info("src0"), input_info("src1") }, eltwise_mode::ge));
+
+    //inference
+    network net(engine, tpl, get_test_default_config(engine));
+    net.set_input_data("src0", src0);
+    net.set_input_data("src1", src1);
+    auto outputs = net.execute();
+
+    ASSERT_EQ(outputs.size(), size_t(1));
+    ASSERT_EQ(outputs.begin()->first, "eltwise");
+
+    auto output = outputs.at("eltwise").get_memory();
+    cldnn::mem_lock<int8_t> output_ptr(output, get_test_stream());
+
+    for (size_t f = 0; f < feature_src1; ++f) {
+        for (size_t y = 0; y < spatial_y; ++y) {
+            int8_t expected = (src0_vals[y] >= src1_vals[f]) ? 1 : 0; // broadcasting logic
+            ASSERT_EQ(expected, output_ptr[f * spatial_y + y]);
+        }
+    }
+}
+////////////////////////////////////////////////////////////////////////////////////////////////////
 
 TEST(eltwise_gpu_f32, equal_in2_float_out1_int) {
     //  Input2 : 2x2x2x2

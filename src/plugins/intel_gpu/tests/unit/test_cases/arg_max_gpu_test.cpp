@@ -73,6 +73,7 @@ struct is_uint8_input : std::false_type {};
 template<format::type Fmt>
 struct is_uint8_input<arg_max_input_types<Fmt, uint8_t>> : std::true_type {};
 
+
 TYPED_TEST(argmax_gpu_test, base) {
     //  Input  : 2x4x2x2
     static const int32_t x_size = 2, y_size = 2, feature_num = 4, batch_num = 2;
@@ -125,6 +126,121 @@ TYPED_TEST(argmax_gpu_test, base) {
 
     this->checkOutput(output, out_size);
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+//Pravin
+TEST(arg_max_min_gpu_axis_debug, f32) {
+    const int batch_num = 1;
+    const int feature_num = 18000;
+    const int x_size = 1;
+    const int y_size = 38416;
+    const int top_k = 1;
+
+    auto& engine = get_test_engine();
+
+    auto input_layout_desc = layout{data_types::f32, format::bfyx, {batch_num, feature_num, x_size, y_size}};
+    auto input = engine.allocate_memory(input_layout_desc);
+
+    //input data
+    std::vector<float> input_vec(batch_num * feature_num * x_size * y_size);
+    for (size_t i = 0; i < input_vec.size(); ++i)
+        input_vec[i] = static_cast<float>(std::sin(i * 0.001f));
+    
+    //std::vector<float> input_vec(batch_num * feature_num * x_size * y_size, 0.0f);
+    //set_values(input, input_vec);
+
+
+    topology topology;
+    topology.add(input_layout("input", input->get_layout()));
+
+    topology.add(arg_max_min(
+        "arg_max",
+        { input_info("input") },
+        ov::op::TopKMode::MIN,
+        top_k,
+        2, // axis = feature
+        ov::op::TopKSortType::SORT_INDICES,
+        false,
+        false,
+        data_types::i32
+    ));
+
+    try {
+        network network(engine, topology, get_test_default_config(engine));
+        network.set_input_data("input", input);
+
+        std::cout << "Tensor rank: " << input->get_layout().get_rank() << "\n";
+        auto outputs = network.execute();
+        ASSERT_EQ(outputs.size(), size_t(1));
+
+        auto output = outputs.at("arg_max").get_memory();
+        cldnn::mem_lock<int32_t> output_ptr(output, get_test_stream());
+
+        //checks ouput
+        for (size_t i = 0; i < 18000; i++) {
+            ASSERT_GE(output_ptr[i], 0);
+            ASSERT_LT(output_ptr[i], feature_num);
+        }
+
+        std::cout << "[INFO] Output size: " << output_ptr.size() << std::endl;
+
+    } catch (const std::exception& e) {
+        std::cerr << "[ERROR] Exception during ArgMax execution: " << e.what() << std::endl;
+        FAIL() << "Inference failed with exception: " << e.what();
+    }
+}
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+TEST(arg_max_min_gpu_axis_feature_topk1_min, f32) {
+    const int batch_num = 1;
+    //const int feature_num = 180;
+    const int feature_num = 18000;
+    const int x_size = 1;
+    //const int y_size = 384;
+    const int y_size = 38416;
+    const int top_k = 1;
+    auto& engine = get_test_engine();
+
+    auto input_layout_desc = layout{data_types::f32, format::bfyx, {batch_num, feature_num, x_size, y_size}};
+    auto input = engine.allocate_memory(input_layout_desc);
+
+    //input data
+    std::vector<float> input_vec(batch_num * feature_num * x_size * y_size);
+    for (size_t i = 0; i < input_vec.size(); ++i)
+        input_vec[i] = static_cast<float>(std::sin(i * 0.001f));
+
+    set_values(input, input_vec);
+
+    topology topology;
+    topology.add(input_layout("input", input->get_layout()));
+    topology.add(arg_max_min("arg_min",
+                             { input_info("input") },
+                             ov::op::TopKMode::MIN,
+                             top_k,
+                             1,  //axis = feature
+                             ov::op::TopKSortType::SORT_INDICES,
+                             false,  //values_first
+                             false,  //stable
+                             data_types::i32));
+
+    network network(engine, topology, get_test_default_config(engine));
+    network.set_input_data("input", input);
+    auto outputs = network.execute();
+
+    ASSERT_EQ(outputs.size(), size_t(1));
+    auto output = outputs.at("arg_min").get_memory();
+
+    cldnn::mem_lock<int32_t> output_ptr(output, get_test_stream());
+
+    //output
+    for (size_t i = 0; i < y_size * batch_num * top_k; i++) {
+        ASSERT_GE(output_ptr[i], 0);
+        ASSERT_LT(output_ptr[i], feature_num);
+    }
+    std::cout << "output_ptr size:" << output_ptr.size() << "\n";
+}
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 // TODO: extend test with layouts to 3d case in scope of arg_max operation layouts support
 TEST(arg_max_gpu_min_axis_batch_bfzyx, i32) {

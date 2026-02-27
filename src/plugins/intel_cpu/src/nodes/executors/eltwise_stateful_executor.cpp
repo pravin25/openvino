@@ -318,6 +318,24 @@ void EltwiseStatefulExecutor::execute(const MemoryArgs& memory) {
     }
 
     m_executor->exec(args_ptrs, outDims);
+
+    /*if (m_attrs.data.debug_name == "/coarse_point_matching/Sub_3") {
+    std::cout << "\n==== Debug: " << m_attrs.data.debug_name << " ====\n";
+    // print inputs
+    for (const auto& [argId, mem] : memory) {
+        if (argId == ARG_DST) continue;
+        auto ptr = mem->getDataAs<const float>();
+        std::cout << "Input " << argId << ": ";
+        for (int i = 0; i < 10; i++) std::cout << ptr[i] << " ";
+        std::cout << "\n";
+    }
+    // print output
+    float* out_ptr = reinterpret_cast<float*>(args_ptrs.dst_ptr);
+    std::cout << "Output: ";
+    for (int i = 0; i < 10; i++) std::cout << out_ptr[i] << " ";
+    std::cout << "\n";
+    }*/
+
 }
 
 impl_desc_type EltwiseStatefulExecutor::implType() const {

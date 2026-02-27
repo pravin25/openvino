@@ -35,6 +35,8 @@ struct EltwiseData {
         return algo == rhs.algo && onednnAlgorithm == rhs.onednnAlgorithm && alpha == rhs.alpha && beta == rhs.beta &&
                gamma == rhs.gamma;
     }
+    // ---- ADD THIS ----
+    std::string debug_name;
 };
 
 inline std::ostream& operator<<(std::ostream& os, const EltwiseData& eltwiseData) {

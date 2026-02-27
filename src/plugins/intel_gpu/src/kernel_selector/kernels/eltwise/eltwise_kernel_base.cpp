@@ -99,6 +99,12 @@ Datatype EltwiseKernelBase::GetAccumulatorType(const eltwise_params &params) con
     if (params.int8_quantization)
         return Datatype::INT32;
 
+     // Force FP16 or lower inputs to accumulate in F32
+    for (auto& in : params.inputs) {
+        if (in.GetDType() == Datatype::F16 || in.GetDType() == Datatype::UINT8 || in.GetDType() == Datatype::INT8)
+            return Datatype::F32;
+    }
+
     Datatype types[] = { Datatype::F32, Datatype::F16, Datatype::INT64, Datatype::INT32, Datatype::UINT32};
 
     for (Datatype type : types)

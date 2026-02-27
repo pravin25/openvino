@@ -42,6 +42,7 @@ public:
         if (output_layout.format == format::any) {
             output_layout.format = impl_param.get_input_layout().format;
         }
+        //std::cout << "\n calc_output_layouts.....";
         return { output_layout };
     }
 

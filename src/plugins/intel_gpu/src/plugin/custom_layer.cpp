@@ -107,6 +107,12 @@ void CustomLayer::ProcessBuffersNode(const pugi::xml_node & node) {
             kp.type = ParamType::Input;
         } else if (typeStr.compare("output") == 0) {
             kp.type = ParamType::Output;
+        } else if (typeStr.compare("internal") == 0) {  //pravin
+            kp.type = ParamType::Internal;
+            kp.size_expr = get_str_attr(tensorNode, "size", "");
+            CheckAndReturnError(kp.size_expr.empty(), "Internal buffer requires a size attribute");
+            //printf("\nInternal buffer detected with size expression: %s\n", kp.size_expr.c_str());
+            //printf("\n ,,,,,,,cought!\n");
         } else {
             CheckAndReturnError(true, "Tensor node has an invalid type: " << typeStr);
         }

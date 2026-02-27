@@ -210,6 +210,10 @@ protected:
     }
 
     ConfigOptionBase* get_option_ptr(const std::string& name) const {
+        /*for (const auto& pair : m_options_map) {
+              std::cout << "Key: " << pair.first
+              << ", Pointer: " << pair.second << std::endl;
+        }*/
         auto it = m_options_map.find(name);
         OPENVINO_ASSERT(it != m_options_map.end(), "Option not found: ", name);
         OPENVINO_ASSERT(it->second != nullptr, "Option is invalid: ", name);

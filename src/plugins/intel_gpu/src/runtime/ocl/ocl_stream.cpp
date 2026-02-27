@@ -98,8 +98,15 @@ void set_arguments_impl(ocl_kernel_type& kernel,
                 status = set_kernel_arg(kernel, i, data.fused_op_inputs[args[i].index]);
                 break;
             case args_t::INTERNAL_BUFFER:
-                OPENVINO_ASSERT(args[i].index < data.intermediates.size() && data.intermediates[args[i].index],
-                                "The allocated intermediate memory is necessary to set kernel arguments.");
+                //OPENVINO_ASSERT(args[i].index < data.intermediates.size() && data.intermediates[args[i].index],
+                //                "The allocated intermediate memory is necessary to set kernel arguments.");
+                if (!(args[i].index < data.intermediates.size() && data.intermediates[args[i].index])) {
+                     std::cerr << "[GPU] Failed to set intermediate buffer for kernel index " << i
+                       << ", arg index: " << args[i].index
+                       << ", intermediates size: " << data.intermediates.size()
+                       << ", kernel handle: " << kernel.get() << "\n";
+                       OPENVINO_ASSERT(false, "The allocated intermediate memory is necessary to set kernel arguments.");
+                }
                 status = set_kernel_arg(kernel, i, data.intermediates[args[i].index]);
                 break;
             case args_t::OUTPUT:
