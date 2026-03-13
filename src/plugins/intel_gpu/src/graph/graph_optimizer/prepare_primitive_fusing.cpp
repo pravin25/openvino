@@ -84,7 +84,7 @@ void prepare_primitive_fusing::run(program& p) {
     remove_redundant_reshape(p);
     fuse_swiglu(p);
     fuse_bias(p);
-    fuse_simple_primitives(p);
+    //fuse_simple_primitives(p);
     fuse_constant_transposes(p);
     optimize_fused_ops(p);
 }

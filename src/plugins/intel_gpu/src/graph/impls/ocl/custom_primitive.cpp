@@ -303,8 +303,8 @@ static void allocate_internal_buffers(custom_gpu_primitive_inst& instance,
         // Evaluate size expression based on input_dims
         size_t alloc_size = evaluate_size_expr(size_expr, input_dims);
 
-        std::cout << "[allocate_internal_buffers] index: " << index << ", size_expr: " << size_expr
-                  << ", alloc_size: " << alloc_size << std::endl;
+        //std::cout << "[allocate_internal_buffers] index: " << index << ", size_expr: " << size_expr
+        //          << ", alloc_size: " << alloc_size << std::endl;
 
         // Allocate memory for internal buffer (assuming float data type here)
         cldnn::layout internal_layout(cldnn::data_types::f32,
@@ -380,10 +380,10 @@ static std::unique_ptr<primitive_impl> create(const custom_gpu_primitive_node& a
             size_expr_map[p.index] = p.size_expr;
         }
     }
-    std::cout << "\n[DEBUG_1] Kernel arguments parsed from XML:" << std::endl;
+    //std::cout << "\n[DEBUG_1] Kernel arguments parsed from XML:" << std::endl;
     for (size_t i = 0; i < primitive->kernel_arguments.size(); ++i) {
-        std::cout << "  Arg[" << i << "]: type = " << static_cast<int>(primitive->kernel_arguments[i].type)
-                  << ", index = " << primitive->kernel_arguments[i].index << std::endl;
+        //std::cout << "  Arg[" << i << "]: type = " << static_cast<int>(primitive->kernel_arguments[i].type)
+        //          << ", index = " << primitive->kernel_arguments[i].index << std::endl;
     }
     //return std::make_unique<custom_gpu_primitive_impl>(arg, cl_kernel);
     if (!size_expr_map.empty()) {
